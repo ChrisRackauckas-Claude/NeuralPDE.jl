@@ -13,13 +13,15 @@ function NeuralPDE.BNNODE(
         ),
         Integratorkwargs = (Integrator = Leapfrog,),
         numensemble = floor(Int, draw_samples / 3),
+        n_adapts = min(draw_samples ÷ 10, 1000),
         estim_collocate = false, autodiff = false, progress = false, verbose = false
     )
     chain isa AbstractLuxLayer || (chain = FromFluxAdaptor()(chain))
     return BNNODE(
         chain, kernel, strategy, draw_samples, priorsNNw, param, l2std, phystd,
         phynewstd, dataset, physdt, MCMCkwargs, nchains, init_params, Adaptorkwargs,
-        Integratorkwargs, numensemble, estim_collocate, autodiff, progress, verbose
+        Integratorkwargs, numensemble, n_adapts, estim_collocate, autodiff, progress,
+        verbose
     )
 end
 
@@ -43,7 +45,7 @@ function SciMLBase.__solve(
         alg.physdt, alg.l2std, alg.phystd, alg.phynewstd,
         alg.priorsNNw, param, alg.nchains, alg.autodiff,
         Kernel = alg.kernel, alg.Adaptorkwargs, alg.Integratorkwargs,
-        alg.MCMCkwargs, alg.progress, alg.verbose, alg.estim_collocate
+        alg.MCMCkwargs, alg.n_adapts, alg.progress, alg.verbose, alg.estim_collocate
     )
 
     fullsolution = BPINNstats(mcmcchain, samples, statistics)
