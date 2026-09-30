@@ -26,4 +26,10 @@ using AdvancedHMC, MCMCChains, LogDensityProblems
     @test alg.n_adapts == 20
     sol = solve(prob, alg)
     @test n_adapted(sol.original.statistics) == 20
+
+    sol = solve(prob, alg; callback = SciMLBase.CallbackSet())
+    @test n_adapted(sol.original.statistics) == 20
+    @test_throws ErrorException solve(
+        prob, alg; callback = SciMLBase.DiscreteCallback((u, t, i) -> false, i -> nothing)
+    )
 end
