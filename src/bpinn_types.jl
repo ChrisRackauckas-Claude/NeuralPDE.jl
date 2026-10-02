@@ -16,13 +16,16 @@ end
 vector_to_parameters(ps_new::AbstractVector, _::AbstractVector) = ps_new
 
 """
-    BNNODE(chain, kernel = AdvancedHMC.HMC; strategy = nothing, draw_samples = 2000,
-           priorsNNw = (0.0, 2.0), param = [nothing], l2std = [0.05],
+    BNNODE(chain, kernel = AdvancedHMC.HMC; strategy = nothing, draw_samples = 1000,
+           priorsNNw = (0.0, 2.0), param = nothing, l2std = [0.05],
            phystd = [0.05], phynewstd = (ode_params)->[0.05], dataset = [], physdt = 1 / 20.0,
-           MCMCargs = (; n_leapfrog=30), nchains = 1, init_params = nothing,
+           MCMCkwargs = (n_leapfrog = 30,), nchains = 1, init_params = nothing,
            Adaptorkwargs = (; Adaptor = AdvancedHMC.StanHMCAdaptor, targetacceptancerate = 0.8,
                               Metric = AdvancedHMC.DiagEuclideanMetric),
-           Integratorkwargs = (Integrator = AdvancedHMC.Leapfrog,), autodiff = false, estim_collocate = false, progress = false, verbose = false)
+           Integratorkwargs = (Integrator = AdvancedHMC.Leapfrog,),
+           numensemble = floor(Int, draw_samples / 3),
+           n_adapts = min(draw_samples ÷ 10, 1000), autodiff = false,
+           estim_collocate = false, progress = false, verbose = false)
 
 Algorithm for solving ordinary differential equations using a Bayesian neural network. This
 is a specialization of the physics-informed neural network which is used as a solver for a
@@ -117,6 +120,7 @@ Kevin Linka, Amelie Schäfer, Xuhui Meng, Zongren Zou, George Em Karniadakis, El
     Adaptorkwargs <: NamedTuple
     Integratorkwargs <: NamedTuple
     numensemble::Int
+    n_adapts::Int
     estim_collocate::Bool
     autodiff::Bool
     progress::Bool

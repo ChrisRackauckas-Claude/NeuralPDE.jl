@@ -601,7 +601,8 @@ end
         Kernel = HMC(0.1, 30), Adaptorkwargs = (Adaptor = StanHMCAdaptor,
             Metric = DiagEuclideanMetric, targetacceptancerate = 0.8),
         Integratorkwargs = (Integrator = Leapfrog,), saveats = [1 / 10.0],
-        numensemble = floor(Int, draw_samples / 3), progress = false, verbose = false)
+        numensemble = floor(Int, draw_samples / 3), n_adapts = min(draw_samples ÷ 10, 1000),
+        progress = false, verbose = false)
 
 Bayesian inference for a ModelingToolkit `PDESystem` using the NeuralPDE 7
 `PhysicsInformedNN` / `BayesianPINN` pipeline.
@@ -633,7 +634,7 @@ configured derivative method used by the discretized `System` costs.
 
 ## Keyword Arguments
 
-* `draw_samples`: number of MCMC samples (warmup is ~2/3 of this).
+* `draw_samples`: number of MCMC samples, including the `n_adapts` adaptation draws.
 * `bcstd`: noise std of each boundary-condition residual batch.
 * `phystd`: noise std of each PDE residual batch.
 * `l2std`: noise std of the observational L2 likelihood (inverse problems).
@@ -647,6 +648,12 @@ configured derivative method used by the discretized `System` costs.
 * `param`: prior distributions of estimated PDE parameters (`param_estim = true`).
 * `nchains`: number of MCMC chains.
 * `Kernel`, `Adaptorkwargs`, `Integratorkwargs`: AdvancedHMC sampling controls.
+* `n_adapts`: number of leading draws during which the adaptor tunes the step size and
+  mass matrix (default `min(draw_samples ÷ 10, 1000)`, AdvancedHMC's default). The
+  default `StanHMCAdaptor` updates the mass matrix only at the end of an adaptation
+  window; with its default buffers (`init_buffer = 75`, `term_buffer = 50`,
+  `window_size = 25`) the first window closes only when `n_adapts ≥ 150`, and below
+  that only the step size is adapted.
 * `saveats`: grid spacing per independent variable for the ensemble solution.
 * `numensemble`: trailing samples used for the ensemble / parameter estimates.
 * `pretrain_iters`: Adam steps on the `OptimizationProblem` objective before each
@@ -671,7 +678,13 @@ function NeuralPDE.ahmc_bayesian_pinn_pde(
         Integratorkwargs = (Integrator = Leapfrog,), saveats = [1 / 10.0],
         numensemble = floor(Int, draw_samples / 3), Dict_differentials = nothing,
         pretrain_iters::Int = discretization.param_estim ? 0 : 500,
-        progress = false, verbose = false
+        n_adapts::Int = min(draw_samples ÷ 10, 1000), progress = false, verbose = false
+    )
+    0 ≤ n_adapts ≤ draw_samples || throw(
+        ArgumentError(
+            "`n_adapts` must be between 0 and `draw_samples`, got n_adapts = $n_adapts \
+            with draw_samples = $draw_samples"
+        )
     )
     pinn = discretization isa BayesianPINN ? discretization.pinn : discretization
     dataset_pde, dataset_bc = if discretization isa BayesianPINN
@@ -827,7 +840,7 @@ function NeuralPDE.ahmc_bayesian_pinn_pde(
         )
         kern = AdvancedHMC.make_kernel(Kernel, integrator)
         samples, stats = sample(
-            hamiltonian, kern, θ0, draw_samples, adaptor;
+            hamiltonian, kern, θ0, draw_samples, adaptor, n_adapts;
             progress = progress, verbose = verbose
         )
         matrix_samples = hcat(samples...)

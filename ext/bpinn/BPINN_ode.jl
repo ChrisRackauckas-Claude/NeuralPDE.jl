@@ -13,13 +13,15 @@ function NeuralPDE.BNNODE(
         ),
         Integratorkwargs = (Integrator = Leapfrog,),
         numensemble = floor(Int, draw_samples / 3),
+        n_adapts = min(draw_samples ÷ 10, 1000),
         estim_collocate = false, autodiff = false, progress = false, verbose = false
     )
     chain isa AbstractLuxLayer || (chain = FromFluxAdaptor()(chain))
     return BNNODE(
         chain, kernel, strategy, draw_samples, priorsNNw, param, l2std, phystd,
         phynewstd, dataset, physdt, MCMCkwargs, nchains, init_params, Adaptorkwargs,
-        Integratorkwargs, numensemble, estim_collocate, autodiff, progress, verbose
+        Integratorkwargs, numensemble, n_adapts, estim_collocate, autodiff, progress,
+        verbose
     )
 end
 
@@ -27,8 +29,18 @@ function SciMLBase.__solve(
         prob::SciMLBase.ODEProblem, alg::BNNODE, args...; dt = nothing,
         timeseries_errors = true, save_everystep = true, adaptive = false,
         abstol = 1.0f-6, reltol = 1.0f-3, verbose = false, saveat = 1 / 50.0,
-        maxiters = nothing
+        maxiters = nothing, callback = nothing
     )
+    # `solve` merges an empty `CallbackSet` into the keyword arguments; anything
+    # else cannot be honored because BNNODE samples instead of integrating.
+    if callback !== nothing &&
+            !(
+            callback isa SciMLBase.CallbackSet &&
+                isempty(callback.continuous_callbacks) &&
+                isempty(callback.discrete_callbacks)
+        )
+        error("BNNODE does not support ODE callbacks")
+    end
     (; chain, param, strategy, draw_samples, numensemble, verbose) = alg
 
     # ahmc_bayesian_pinn_ode needs param=[] for easier vcat operation for full vector of parameters
@@ -43,7 +55,7 @@ function SciMLBase.__solve(
         alg.physdt, alg.l2std, alg.phystd, alg.phynewstd,
         alg.priorsNNw, param, alg.nchains, alg.autodiff,
         Kernel = alg.kernel, alg.Adaptorkwargs, alg.Integratorkwargs,
-        alg.MCMCkwargs, alg.progress, alg.verbose, alg.estim_collocate
+        alg.MCMCkwargs, alg.n_adapts, alg.progress, alg.verbose, alg.estim_collocate
     )
 
     fullsolution = BPINNstats(mcmcchain, samples, statistics)

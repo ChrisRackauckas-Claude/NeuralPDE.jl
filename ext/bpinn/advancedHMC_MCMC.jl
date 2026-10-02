@@ -281,8 +281,9 @@ end
                            Adaptorkwargs = (Adaptor = StanHMCAdaptor,
                                Metric = DiagEuclideanMetric, targetacceptancerate = 0.8),
                            Integratorkwargs = (Integrator = Leapfrog,),
-                           MCMCkwargs = (n_leapfrog = 30,), progress = false,
-                           verbose = false)
+                           MCMCkwargs = (n_leapfrog = 30,),
+                           n_adapts = min(draw_samples ÷ 10, 1000),
+                           progress = false, verbose = false)
 
 !!! warning
 
@@ -351,7 +352,14 @@ unless you additionally choose to use the Data L2 loss against `dataset` for som
 * `init_params`: initial parameter values for BPINN (ideally for multiple chains different
                  initializations preferred)
 * `nchains`: number of chains you want to sample.
-* `draw_samples`: number of samples to be drawn in the MCMC algorithms (warmup samples are ~2/3 of draw samples)
+* `draw_samples`: number of samples to be drawn in the MCMC algorithms, including the
+                  `n_adapts` adaptation draws.
+* `n_adapts`: number of leading draws during which the adaptor tunes the step size and
+              mass matrix (default `min(draw_samples ÷ 10, 1000)`, AdvancedHMC's default).
+              The default `StanHMCAdaptor` updates the mass matrix only at the end of an
+              adaptation window; with its default buffers (`init_buffer = 75`,
+              `term_buffer = 50`, `window_size = 25`) the first window closes only when
+              `n_adapts ≥ 150`, and below that only the step size is adapted.
 * `l2std`: standard deviation of BPINN prediction against L2 losses/Dataset
 * `phystd`: standard deviation of BPINN prediction against Chosen Underlying ODE System
 * `phynewstd`: A function that gives the standard deviation of the Data Quadrature loss function at each iteration. 
@@ -398,7 +406,14 @@ function NeuralPDE.ahmc_bayesian_pinn_ode(
             Metric = DiagEuclideanMetric, targetacceptancerate = 0.8,
         ),
         Integratorkwargs = (Integrator = Leapfrog,), MCMCkwargs = (n_leapfrog = 30,),
+        n_adapts::Int = min(draw_samples ÷ 10, 1000),
         progress = false, verbose = false, estim_collocate = false
+    )
+    0 ≤ n_adapts ≤ draw_samples || throw(
+        ArgumentError(
+            "`n_adapts` must be between 0 and `draw_samples`, got n_adapts = $n_adapts \
+            with draw_samples = $draw_samples"
+        )
     )
     @assert !isinplace(prob) "The BPINN ODE solver only supports out-of-place ODE definitions, i.e. du=f(u,p,t)."
 
@@ -527,7 +542,7 @@ function NeuralPDE.ahmc_bayesian_pinn_ode(
             Kernel = AdvancedHMC.make_kernel(MCMC_alg, integrator)
             samples,
                 stats = sample(
-                hamiltonian, Kernel, initial_θ, draw_samples, adaptor;
+                hamiltonian, Kernel, initial_θ, draw_samples, adaptor, n_adapts;
                 progress = progress, verbose = verbose
             )
 
@@ -551,7 +566,7 @@ function NeuralPDE.ahmc_bayesian_pinn_ode(
         samples,
             stats = sample(
             hamiltonian, Kernel, initial_θ, draw_samples,
-            adaptor; progress = progress, verbose = verbose
+            adaptor, n_adapts; progress = progress, verbose = verbose
         )
 
         if verbose
